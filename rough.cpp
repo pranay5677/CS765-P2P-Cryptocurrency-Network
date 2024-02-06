@@ -1,64 +1,6 @@
 #include<bits/stdc++.h>
 using namespace std;
-
-class Transaction;
 class Block;
-class TreeNode;
-class Tree;
-class Peer;
-
-class Peer{
-public:
-    int id;
-    double hash_power;
-    int speed;
-    vector<int>neighbours;
-    int balance;
-    vector<Transaction>all_transactions;
-    vector<Block>pending_blocks;
-    Tree *tree;
-    Peer() {}
-    Peer(int id,double hash_power,int speed,int balance){
-        this->speed=speed;
-        this->id=id;
-        this->hash_power=hash_power;
-        this->balance=balance;
-
-    }
-
-};
-class Transaction{
-public:
-    int transaction_id;
-    int money;
-    int sender;
-    int receiver;
-    double sending_time;
-    double receiving_time;
-    Transaction () {}
-    Transaction(int transaction_id,int money,int sender,int receiver,double sending_time,double receiving_time){
-        this->transaction_id=transaction_id;
-        this->sender=sender;
-        this->money=money;
-        this->receiver=receiver;
-        this->sending_time=sending_time;
-        this->receiving_time=receiving_time;
-    }
-};
-class Block{
-public:
-    int block_id;
-    vector<Transaction>tns;
-    int prev_block_id;
-    int miner;
-    Block() {}
-    Block(int block_id,int miner,vector<Transaction>tns,int prev_block_id){
-        this->block_id=block_id;
-        this->miner=miner;
-        this->tns=tns;
-        this->prev_block_id=prev_block_id;
-    }
-};
 class TreeNode {
 public:
     int value;
@@ -185,25 +127,15 @@ public:
         }
     }
 };
+int main() {
+    // Example usage of the Tree class
+    Tree myTree;
+    myTree.insert(-1, 1, nullptr, 0);
+    myTree.insert(1, 2, nullptr, 1);
+    myTree.insert(1, 3, nullptr, 2);
 
-// int main() {
-//     Tree myTree;
+    // Print the tree
+    myTree.printTree();
 
-//     // Insert nodes
-//     myTree.insert(1, 2, nullptr, 0);
-//     myTree.insert(1, 3, nullptr, 0);
-//     myTree.insert(2, 4, nullptr, 5);
-//     myTree.insert(4, 7, nullptr, 5);
-//     myTree.insert(2, 5, nullptr, 3);
-//     myTree.insert(3, 6, nullptr, 2);
-
-//     std::vector<int> longestPath = myTree.findLongestPath();
-
-//     std::cout << "Longest path from root to leaf: ";
-//     for (int value : longestPath) {
-//         std::cout << value << " ";
-//     }
-//     std::cout << std::endl;
-
-//     return 0;
-// }
+    return 0;
+}

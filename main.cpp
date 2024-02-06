@@ -16,7 +16,6 @@ class TypeEvent{
     // 3-receive block
     int receiver; // if type_of_trasaction=1 or receive block
     double time;
-    int last_block_in_longest_chain ; // used while generating block
     Transaction  transaction;
     Block block;
     TypeEvent(int type_of_event,int receiver,double time){
@@ -93,9 +92,8 @@ public:
                 if(adjacency[i][j]) peers[i].neighbours.push_back(j);
             }
             peers[i].tree=new Tree();
-            TypeEvent e=generate_trasaction(i);
-            event_queue.push(e);
-
+            // event_queue.push(generate_trasaction(i));
+            event_queue.push(generate_block(i,0));
         }
         intialize_latencies();
         return ;
@@ -131,13 +129,55 @@ public:
         return E;
        
     }
-    Block generate_block(int sender){
+    TypeEvent generate_block(int sender,double t_k){
+        random_device rd;
+        mt19937 gen(rd());
         vector<int>all_tns_ids;
         vector<int>used_tns_ids;
+
         for(auto tns:peers[sender].all_transactions) all_tns_ids.push_back(tns.transaction_id);
+
         vector<int>chain=peers[sender].tree->findLongestPath();
-        for(auto i:chain){
-            if(peers[sender].tree[i].bl)
+        for(auto i : chain){
+            if(i==-1) continue;
+            TreeNode * t= peers[sender].tree->findbyvalue(i);
+            for(auto j:t->block->tns){
+                used_tns_ids.push_back(j.transaction_id);
+            }
+        }
+        sort(all_tns_ids.begin(), all_tns_ids.end());
+        sort(used_tns_ids.begin(), used_tns_ids.end());
+        vector<int> difference;
+        set_difference(all_tns_ids.begin(), all_tns_ids.end(),
+                        used_tns_ids.begin(), used_tns_ids.end(),
+                        std::back_inserter(difference));
+        
+        if(difference.size()==0){
+            Block b(block_count,sender,vector<Transaction>(),chain[chain.size()-1]);
+            block_count++;
+            exponential_distribution<double> distribution2(0.01);
+            double T_k=distribution2(gen);
+            TypeEvent E(2,-1,t_k+T_k,b);
+            return E;
+
+        }
+        else{
+            uniform_real_distribution<double> distribution1(0,difference.size());
+            int no_of_elements=distribution1(gen);
+            shuffle(difference.begin(),difference.end(),gen);
+            vector<int>selected_tns_ids(difference.begin(),difference.begin()+no_of_elements);
+            vector<Transaction>selected_tns;
+            for(auto id:selected_tns_ids){
+                for(auto t: peers[sender].all_transactions){
+                    if(id==t.transaction_id) selected_tns.push_back(t);
+                }
+            }
+            Block b(block_count,sender,selected_tns,chain[chain.size()-1]);
+            block_count++;
+            exponential_distribution<double> distribution2(0.01);
+            double T_k=distribution2(gen);
+            TypeEvent E(2,-1,t_k+T_k,b);
+            return E;
         }
 
 
@@ -157,18 +197,61 @@ public:
         }
         return seen;
     }
-    void recive_forward_block(){
+    bool recive_forward_block(int person,TypeEvent E){
+        bool seen=false;
+        int id=E.block.block_id;
+        if(peers[person].tree->findbyvalue(id)!=nullptr) seen =true;
+        for(auto b: peers[person].pending_blocks){
+            if(b.block_id==id){
+                seen=true;
+                break;
+            }
+        }
+        if(!seen){
+            if(peers[person].tree->findbyvalue(E.block.prev_block_id)==nullptr){
+                peers[person].pending_blocks.push_back(E.block);
+            }
+            else{
+                vector<int>chain1=peers[person].tree->findLongestPath();
+                
+                peers[person].tree->insert(E.block.prev_block_id,id,&E.block,E.time);
+                queue<int>parent_ids;
+                parent_ids.push(id);
+                while(!parent_ids.empty()){
+                    int parent=parent_ids.front();
+                    parent_ids.pop();
+                    for(auto b:peers[person].pending_blocks){
+                        if(b.prev_block_id==parent){
+                            peers[person].tree->insert(parent,b.block_id,&b,E.time);
+                            parent_ids.push(b.block_id);
+                        }
+                    }
+                }
+
+                vector<int>chain2=peers[person].tree->findLongestPath();
+                if(chain2.size()>chain1.size()){
+                    event_queue.push(generate_block(person,E.time));
+                }
+
+
+            }
+        }
+        
+        return seen;
 
     }
     void run(){
         random_device rd;
         mt19937 gen(rd());
         // cout<<"time\tTransaction id\ttype\tsender\treceiver"<<endl;
+        cout<<"time\tblock id\tprev_block_id\ttype\tsender\treceiver"<<endl;
 
         while(!event_queue.empty()){
-
             
             TypeEvent present_event= event_queue.top();
+
+            if(present_event.time > 400) break;
+
             event_queue.pop();
 
             if(present_event.type_of_event==0){
@@ -179,6 +262,10 @@ public:
                 int available_balance=peers[person].balance;
                 uniform_real_distribution<double> distribution1(0,available_balance);
                 present_event.transaction.money=distribution1(gen);
+
+                peers[person].balance-=present_event.transaction.money;
+                peers[present_event.transaction.receiver].balance+=present_event.transaction.money;
+
                 peers[person].all_transactions.push_back(present_event.transaction);
                 for(auto neighbour:peers[person].neighbours){
                     TypeEvent t=present_event;
@@ -204,12 +291,46 @@ public:
                 }
             }
             if(present_event.type_of_event==2){
+                int person=present_event.block.miner;
+                // cout<<present_event.time<<"\t"<<present_event.block.block_id<<"\t"<<present_event.block.prev_block_id<<"\t2\t"<<person<<"\tall"<<endl;
+                vector<int>longest_chain=peers[person].tree->findLongestPath();
+                if(longest_chain[longest_chain.size()-1]==present_event.block.prev_block_id){
+                    int size_tns=present_event.block.tns.size();
+                    for(auto neighbour:peers[person].neighbours){
+                        TypeEvent t=present_event;
+                        t.type_of_event=3;
+                        t.receiver=neighbour;
+                        t.time=present_event.time+(latencies[person][neighbour][0]+size_tns*(8/latencies[person][neighbour][1])+latencies[person][neighbour][2])*0.001;
+                        event_queue.push(t);
+                    }
+                    peers[person].tree->insert(present_event.block.prev_block_id,present_event.block.block_id,&present_event.block,
+                            present_event.time);
+                    peers[person].balance+=50;
+                    event_queue.push(generate_block(person,present_event.time));
+                }
                 
             }
             if(present_event.type_of_event==3){
-                
+                int person=present_event.receiver;
+                // cout<<present_event.time<<"\t"<<present_event.block.block_id<<"\t"<<present_event.block.prev_block_id<<"\t3\t"<<"-1\t"<<person<<endl;
+                int size_tns=present_event.block.tns.size();
+                if(!recive_forward_block(present_event.receiver,present_event)){
+                    for(auto neighbour:peers[person].neighbours){
+                        TypeEvent t=present_event;
+                        t.type_of_event=3;
+                        t.receiver=neighbour;
+                        t.time=present_event.time+(latencies[person][neighbour][0]+size_tns*(8/latencies[person][neighbour][1])+latencies[person][neighbour][2])*0.001;
+                        event_queue.push(t);
+                    }
+                }
             }
+         
         }
+        for(int i=0;i<total_nodes;i++){
+            peers[i].tree->printTree();
+            cout<<peers[i].balance<<endl;
+        }
+
     }
 };
 
