@@ -16,12 +16,9 @@ def visualize_graph(adjacency_matrix):
 
     pos = nx.spring_layout(G)  # You can use other layout algorithms as well
     nx.draw(G, pos, with_labels=True, font_weight='bold', node_size=700, node_color='skyblue')
-    plt.show()
+    plt.savefig("Graph_peers.png")
 
 if __name__ == "__main__":
     file_path = "adjacency_list.txt"  # Replace with the actual file path
     adjacency_matrix = read_adjacency_matrix(file_path)
-    print("Adjacency Matrix:")
-    print(adjacency_matrix)
-
     visualize_graph(adjacency_matrix)

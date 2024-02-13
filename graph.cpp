@@ -48,7 +48,8 @@ bool isConnected(vector<vector<int>>&graph) {
    }
    return true;
 }
-int main(){
+int main(int argc, char*argv[]){
+    NODE=atoi(argv[1]);
     srand(static_cast<unsigned int>(time(0)));
     while(true){
         vector<vector<int>>adjacency_list(NODE,vector<int>(NODE,0));

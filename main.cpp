@@ -5,6 +5,9 @@
 #include <random>
 #include"headers.h"
 using namespace std;
+
+ofstream logfile("logfile.txt");
+
 class TypeEvent;
 
 class TypeEvent{
@@ -14,6 +17,7 @@ class TypeEvent{
     // 1-send-receive-trasaction
     // 2 -generate block
     // 3-receive block
+    int sender;
     int receiver; // if type_of_trasaction=1 or receive block
     double time;
     Transaction  transaction;
@@ -46,14 +50,22 @@ class Event{
 public:
     vector<Peer>peers;
     int total_nodes;
+    double T_tx;
+    int z0;
+    int z1;
+    double I;
     vector<vector<int>>adjacency;
     vector<vector<vector<double>>>latencies;
     int trasaction_count;
     int block_count;
     priority_queue<TypeEvent, vector<TypeEvent>, greater<TypeEvent>> event_queue;
 
-    Event(int total_nodes){
+    Event(int total_nodes,double T_tx,int z0,int z1,double I){
         this->total_nodes=total_nodes;
+        this->T_tx=T_tx;
+        this->z0=z0;
+        this->z1=z1;
+        this->I=I;
         latencies=vector<vector<vector<double>>>(total_nodes,vector<vector<double>>(total_nodes, vector<double>(3, 0.0)));
         trasaction_count=1;
         block_count=1;
@@ -85,15 +97,32 @@ public:
     }
     void peers_intialize(){
         peers=vector<Peer>(total_nodes);
+        int slow_peers=int((z0*total_nodes)/100);
+        int low_cpu_peers=int((z1*total_nodes)/100);
         for(int i=0;i<total_nodes;i++){
-            double t=0;
-            peers[i]=Peer(i,t,1,100);
+            peers[i]=Peer(i,10,1,100);
             for(int j=0;j<total_nodes;j++){
                 if(adjacency[i][j]) peers[i].neighbours.push_back(j);
             }
             peers[i].tree=new Tree();
-            // event_queue.push(generate_trasaction(i,0));
+            event_queue.push(generate_trasaction(i,0));
             event_queue.push(generate_block(i,0));
+        }
+        random_device rd;
+        mt19937 gen(rd());
+        vector<int>list_all_nodes;
+        for(int i=0;i<total_nodes;i++) list_all_nodes.push_back(i);
+        shuffle(list_all_nodes.begin(),list_all_nodes.end(),gen);
+        for(int i=0;i<slow_peers;i++){
+            peers[list_all_nodes[i]].speed=0;
+        }
+        shuffle(list_all_nodes.begin(),list_all_nodes.end(),gen);
+        for(int i=0;i<low_cpu_peers;i++){
+            peers[list_all_nodes[i]].hash_power=1;
+        }
+        int sum=low_cpu_peers+10*(total_nodes-low_cpu_peers);
+        for(int i=0;i<total_nodes;i++){
+            peers[i].hash_power/=sum;
         }
         intialize_latencies();
         return ;
@@ -110,7 +139,7 @@ public:
                 else latencies[i][j][1]=5;
 
                 exponential_distribution<double> distribution2(latencies[i][j][1]/96);
-                latencies[i][j][2]=distribution2(gen);
+                latencies[i][j][2]=latencies[i][j][1]/96;
 
             }
         }
@@ -121,7 +150,7 @@ public:
         uniform_int_distribution<int> distribution1(0,total_nodes-2);
         int receiver=distribution1(gen);
         if(receiver==sender) receiver=total_nodes-1;
-        exponential_distribution<double> distribution2(0.01);
+        exponential_distribution<double> distribution2(T_tx);
         int sending_time=distribution2(gen);
         Transaction t(trasaction_count,-1,sender,receiver,sending_time,-1);
         trasaction_count++;
@@ -155,7 +184,7 @@ public:
         if(difference.size()==0){
             Block b(block_count,sender,vector<Transaction>(),chain[chain.size()-1]);
             block_count++;
-            exponential_distribution<double> distribution2(0.01);
+            exponential_distribution<double> distribution2(peers[sender].hash_power/I);
             double T_k=distribution2(gen);
             TypeEvent E(2,-1,t_k+T_k,b);
             return E;
@@ -174,7 +203,7 @@ public:
             }
             Block b(block_count,sender,selected_tns,chain[chain.size()-1]);
             block_count++;
-            exponential_distribution<double> distribution2(0.01);
+            exponential_distribution<double> distribution2(peers[sender].hash_power/I);
             double T_k=distribution2(gen);
             TypeEvent E(2,-1,t_k+T_k,b);
             return E;
@@ -243,19 +272,19 @@ public:
     void run(){
         random_device rd;
         mt19937 gen(rd());
-        // cout<<"time\tTransaction id\ttype\tsender\treceiver"<<endl;
-        cout<<"time\tblock id\tprev_block_id\ttype\tsender\treceiver"<<endl;
+        logfile<<"Time\tType\tId\tSender\tReceiver"<<endl;
 
         while(!event_queue.empty()){
             
             TypeEvent present_event= event_queue.top();
 
-            if(present_event.time > 400) break;
+            if(present_event.time > 200) break;
 
             event_queue.pop();
 
             if(present_event.type_of_event==0){
                 int person=present_event.transaction.sender;
+
                 // cout<<present_event.time<<"\t"<<present_event.transaction.transaction_id<<"\t0\t"<<person<<"\tall"<<endl;
 
                 mt19937 gen(rd());
@@ -270,18 +299,20 @@ public:
                 for(auto neighbour:peers[person].neighbours){
                     TypeEvent t=present_event;
                     t.type_of_event=1;
+                    t.sender=person;
                     t.receiver=neighbour;
                     exponential_distribution<double> distribution2(latencies[person][neighbour][2]);
                     double rd_var_dij = distribution2(gen);
                     t.time=present_event.time+(latencies[person][neighbour][0]+(8/latencies[person][neighbour][1])+rd_var_dij)*0.001;
                     event_queue.push(t);
                 }
-                // event_queue.push(generate_trasaction(person,present_event.transaction.time));
+                event_queue.push(generate_trasaction(person,present_event.time));
 
             }
             if(present_event.type_of_event==1){
                 int person=present_event.receiver;
-                // cout<<present_event.time<<"\t"<<present_event.transaction.transaction_id<<"\t1\t"<<"-1"<<"\t"<<person<<endl;
+                
+                logfile<<present_event.time<<"\t"<<"Transaction\t"<<present_event.transaction.transaction_id<<"\t"<<present_event.sender<<"\t"<<person<<endl;
                 if(!receive_forward_transaction(person,present_event)){
                     for(auto neighbour:peers[person].neighbours){
                         TypeEvent t=present_event;
@@ -289,19 +320,21 @@ public:
                         exponential_distribution<double> distribution2(latencies[person][neighbour][2]);
                         double rd_var_dij = distribution2(gen);
                         t.time=present_event.time+(latencies[person][neighbour][0]+(8/latencies[person][neighbour][1])+rd_var_dij)*0.001;
+                        t.sender=person;
                         event_queue.push(t);
                     }
                 }
             }
             if(present_event.type_of_event==2){
                 int person=present_event.block.miner;
-                // cout<<present_event.time<<"\t"<<present_event.block.block_id<<"\t"<<present_event.block.prev_block_id<<"\t2\t"<<person<<"\tall"<<endl;
+                // cout<<present_event.time<<"\t"<<"Block\t"<<present_event.block.block_id<<"\t"<<present_event.block.prev_block_id<<"\t2\t"<<person<<"\tall"<<endl;
                 vector<int>longest_chain=peers[person].tree->findLongestPath();
                 if(longest_chain[longest_chain.size()-1]==present_event.block.prev_block_id){
                     int size_tns=present_event.block.tns.size();
                     for(auto neighbour:peers[person].neighbours){
                         TypeEvent t=present_event;
                         t.type_of_event=3;
+                        t.sender=person;
                         t.receiver=neighbour;
                         t.time=present_event.time+(latencies[person][neighbour][0]+size_tns*(8/latencies[person][neighbour][1])+latencies[person][neighbour][2])*0.001;
                         event_queue.push(t);
@@ -315,7 +348,7 @@ public:
             }
             if(present_event.type_of_event==3){
                 int person=present_event.receiver;
-                // cout<<present_event.time<<"\t"<<present_event.block.block_id<<"\t"<<present_event.block.prev_block_id<<"\t3\t"<<"-1\t"<<person<<endl;
+                logfile<<present_event.time<<"\tBlock\t"<<present_event.block.block_id<<"\t"<<present_event.sender<<"\t"<<person<<endl;
                 int size_tns=present_event.block.tns.size();
                 if(!recive_forward_block(present_event.receiver,present_event)){
                     for(auto neighbour:peers[person].neighbours){
@@ -329,17 +362,71 @@ public:
             }
          
         }
-        for(int i=0;i<total_nodes;i++){
-            peers[i].tree->printTree();
-            cout<<peers[i].balance<<endl;
-        }
 
     }
 };
 
-int main(){
+int main(int argc, char* argv[]){
+    
+    if(!logfile.is_open()){cout<<"error"<<endl; return 1;}
+    unordered_map<string, string> args;
+
+    // Parse command-line arguments
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg.substr(0, 2) == "--") {
+            // Remove leading "--"
+            arg = arg.substr(2);
+
+            // Split argument into key and value
+            size_t equalPos = arg.find('=');
+            std::string key = arg.substr(0, equalPos);
+            std::string value = (equalPos != std::string::npos) ? arg.substr(equalPos + 1) : "";
+
+            // Store key-value pair in the map
+            args[key] = value;
+        }
+    }
+
+
+     // n
+    // z0 percent of slow peers
+    // z1 percent of low CPU
+    // T_tx Mean of time between transactions
+    // p_ij light of speed delay
+   
+    // Retrieve values from the parsed arguments
+    int n = std::stoi(args["n"]);
+    int z0 = std::stoi(args["z0"]);
+    int z1 = std::stoi(args["z1"]);
+    double T_tx = std::stod(args["T_tx"]);
+    double I = std::stod(args["I"]);
+
+
+    // Example: Display the values
+    std::cout << "n: " << n << "\n";
+    std::cout << "z0: " << z0 << "\n";
+    std::cout << "z1: " << z1 << "\n";
+    std::cout << "T_tx: " << T_tx << "\n";
+    std::cout << "I: " << I << "\n";
+
     srand(static_cast<unsigned int>(time(0)));
-    exponential_distribution<double> exponentialDist(1.0 / 5);
-    Event e(4);
+
+    Event e(n,T_tx,z0,z1,I);
     e.run();
+
+   ofstream outputFile("edge_trees.txt", std::ios::app);
+   
+    for (int i = 0; i < n; ++i) {
+        std::streambuf* original = std::cout.rdbuf(outputFile.rdbuf());
+        e.peers[i].tree->printAllEdges();
+        cout<<"\n\n";
+        std::cout.rdbuf(original);
+    }
+
+    outputFile.close();
+
+   
+   
 }

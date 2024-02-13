@@ -184,6 +184,23 @@ public:
             }
         }
     }
+    void printAllEdges() const {
+        printAllEdgesHelper(root);
+    }
+
+    void printAllEdgesHelper(const TreeNode* node) const {
+        if (node != nullptr) {
+            for (const TreeNode* child : node->children) {
+                // Print edge in the format "a-b"
+                if(node->value!=-1) std::cout << node->value << "-" << child->value << std::endl;
+                else std::cout << "0" << "-" << child->value << std::endl;
+                
+                // Recursively print edges for child's subtree
+                printAllEdgesHelper(child);
+            }
+        }
+    }
+
 };
 
 // int main() {
