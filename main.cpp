@@ -92,7 +92,7 @@ public:
                 if(adjacency[i][j]) peers[i].neighbours.push_back(j);
             }
             peers[i].tree=new Tree();
-            // event_queue.push(generate_trasaction(i));
+            // event_queue.push(generate_trasaction(i,0));
             event_queue.push(generate_block(i,0));
         }
         intialize_latencies();
@@ -109,23 +109,23 @@ public:
                 if(peers[i].speed && peers[j].speed) latencies[i][j][1]=100;
                 else latencies[i][j][1]=5;
 
-                exponential_distribution<double> distribution2(96 /latencies[i][j][1]);
+                exponential_distribution<double> distribution2(latencies[i][j][1]/96);
                 latencies[i][j][2]=distribution2(gen);
 
             }
         }
     }
-    TypeEvent generate_trasaction(int sender){
+    TypeEvent generate_trasaction(int sender, double current_time){
         random_device rd;
         mt19937 gen(rd());
-        uniform_real_distribution<double> distribution1(0,total_nodes-2);
+        uniform_int_distribution<int> distribution1(0,total_nodes-2);
         int receiver=distribution1(gen);
         if(receiver==sender) receiver=total_nodes-1;
         exponential_distribution<double> distribution2(0.01);
         int sending_time=distribution2(gen);
         Transaction t(trasaction_count,-1,sender,receiver,sending_time,-1);
         trasaction_count++;
-        TypeEvent E(0,-1,sending_time,t);
+        TypeEvent E(0,-1,sending_time+current_time,t);
         return E;
        
     }
@@ -182,7 +182,7 @@ public:
 
 
     }
-    bool receive_forward_trasaction(int person,TypeEvent E){
+    bool receive_forward_transaction(int person,TypeEvent E){
         bool seen=false;
         Transaction received_tn=E.transaction;
         for(auto t:peers[person].all_transactions){
@@ -271,21 +271,24 @@ public:
                     TypeEvent t=present_event;
                     t.type_of_event=1;
                     t.receiver=neighbour;
-                    t.time=present_event.time+(latencies[person][neighbour][0]+(8/latencies[person][neighbour][1])+latencies[person][neighbour][2])*0.001;
+                    exponential_distribution<double> distribution2(latencies[person][neighbour][2]);
+                    double rd_var_dij = distribution2(gen);
+                    t.time=present_event.time+(latencies[person][neighbour][0]+(8/latencies[person][neighbour][1])+rd_var_dij)*0.001;
                     event_queue.push(t);
                 }
-                // event_queue.push(generate_trasaction(person));
+                // event_queue.push(generate_trasaction(person,present_event.transaction.time));
 
             }
             if(present_event.type_of_event==1){
                 int person=present_event.receiver;
                 // cout<<present_event.time<<"\t"<<present_event.transaction.transaction_id<<"\t1\t"<<"-1"<<"\t"<<person<<endl;
-                if(!receive_forward_trasaction(person,present_event)){
+                if(!receive_forward_transaction(person,present_event)){
                     for(auto neighbour:peers[person].neighbours){
                         TypeEvent t=present_event;
-                        t.type_of_event=1;
                         t.receiver=neighbour;
-                        t.time=present_event.time+(latencies[person][neighbour][0]+(8/latencies[person][neighbour][1])+latencies[person][neighbour][2])*0.001;
+                        exponential_distribution<double> distribution2(latencies[person][neighbour][2]);
+                        double rd_var_dij = distribution2(gen);
+                        t.time=present_event.time+(latencies[person][neighbour][0]+(8/latencies[person][neighbour][1])+rd_var_dij)*0.001;
                         event_queue.push(t);
                     }
                 }
