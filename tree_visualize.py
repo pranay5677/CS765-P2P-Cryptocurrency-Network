@@ -1,5 +1,4 @@
 import networkx as nx
-import matplotlib.pyplot as plt
 import pygraphviz as pgv
 
 def generate_tree(edges):
@@ -10,14 +9,16 @@ def generate_tree(edges):
     return G
 
 def visualize_tree(G, filename):
-    plt.figure(figsize=(10, 6))
-    pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
-    nx.draw_networkx_nodes(G, pos, node_size=3000, node_color="skyblue", edgecolors="black", linewidths=1)
-    nx.draw_networkx_labels(G, pos, font_size=10)
-    nx.draw_networkx_edges(G, pos, width=1.0, alpha=0.5)
-    plt.axis('off')
-    plt.savefig(filename)
-    plt.close()
+    node_count = len(G.nodes)
+    node_size = max(3000 / node_count, 100)  # Scale the node size based on the number of nodes
+
+    A = nx.nx_agraph.to_agraph(G)
+    A.graph_attr.update(dpi='300', rankdir='LR')  # Set direction to left-to-right
+    A.node_attr.update(style='filled', shape='circle', width=str(node_size), height=str(node_size), fixedsize='true', fillcolor='lightblue')
+    for node in A.nodes():
+        node.attr['fontsize'] = '10'  # Set font size for node labels
+
+    A.draw(filename, format='png', prog='dot')
 
 def main():
     with open("edge_trees.txt", "r") as file:
