@@ -2,12 +2,8 @@
 #include "headers.h"
 using namespace std;
 
-ofstream logfile("logfile.txt");
 random_device rd;
 mt19937 gen(rd());
-
-class TypeEvent;
-class Event;
 
 class TypeEvent{
 public:
@@ -20,21 +16,21 @@ public:
     int receiver; // valid for type_of_event = 1 or 3
     double time;
 
-    Transaction transaction;
-    Block block;
+    Transaction *transaction;
+    Block *block;
     
     TypeEvent(int type_of_event,int receiver,double time){
         this->type_of_event=type_of_event;
         this->receiver=receiver;
         this->time=time;
     }
-    TypeEvent(int type_of_event,int receiver,double time,Transaction transaction){
+    TypeEvent(int type_of_event,int receiver,double time,Transaction *transaction){
         this->type_of_event=type_of_event;
         this->receiver=receiver;
         this->time=time;
         this->transaction=transaction;
     }
-    TypeEvent(int type_of_event,int receiver,double time,Block block){
+    TypeEvent(int type_of_event,int receiver,double time,Block *block){
         this->type_of_event=type_of_event;
         this->receiver=receiver;
         this->time=time;
@@ -54,13 +50,15 @@ public:
     double I;    
     int transaction_count;
     int block_count;
+    int valid_block_count = 0;
+    ofstream& logfile;
 
     vector<Peer> peers;
     vector<vector<int>> adjacency;
     vector<vector<vector<double>>> latencies;
     priority_queue<TypeEvent, vector<TypeEvent>, greater<TypeEvent>> event_queue;
 
-    Event(int total_nodes,double T_tx,double z0,double z1,double I){
+    Event(int total_nodes,double T_tx,double z0,double z1,double I,ofstream& logfile) : logfile(logfile){
         this->total_nodes=total_nodes;
         this->T_tx=T_tx;
         this->z0=z0;
@@ -68,7 +66,6 @@ public:
         this->I=I;
         transaction_count=1;
         block_count=1;
-
         latencies=vector<vector<vector<double>>>(total_nodes,vector<vector<double>>(total_nodes, vector<double>(3, 0.0)));
         
         read_adjacency_matrix("adjacency_list.txt");
@@ -100,8 +97,8 @@ public:
     }
     void peers_intialize(){
         peers = vector<Peer>(total_nodes);
-        int slow_peers=int((z0*total_nodes)/100);
-        int low_cpu_peers=int((z1*total_nodes)/100);
+        int slow_peers=round((z0*total_nodes)/100);
+        int low_cpu_peers=round((z1*total_nodes)/100);
 
         for(int i=0;i<total_nodes;i++){
             peers[i]=Peer(i,10,1,0);
@@ -116,13 +113,14 @@ public:
         
         vector<int> list_all_nodes;
         for(int i=0;i<total_nodes;i++) list_all_nodes.push_back(i);
+
+        for(int i=0;i<low_cpu_peers;i++){
+            peers[i].hash_power=1;
+        }
+
         shuffle(list_all_nodes.begin(),list_all_nodes.end(),gen);
         for(int i=0;i<slow_peers;i++){
             peers[list_all_nodes[i]].speed=0;
-        }
-        shuffle(list_all_nodes.begin(),list_all_nodes.end(),gen);
-        for(int i=0;i<low_cpu_peers;i++){
-            peers[list_all_nodes[i]].hash_power=1;
         }
 
         int sum=low_cpu_peers+10*(total_nodes-low_cpu_peers);
@@ -154,7 +152,7 @@ public:
         exponential_distribution<double> distribution2(1/T_tx);
         int sending_time = distribution2(gen)+current_time;
 
-        Transaction t(transaction_count,-1,sender,receiver);
+        Transaction *t = new Transaction(transaction_count,-1,sender,receiver);
         transaction_count++;
 
         TypeEvent E(0,-1,sending_time,t);
@@ -165,7 +163,7 @@ public:
         vector<int> all_tns_ids;
         vector<int> used_tns_ids;
 
-        for(auto tns:peers[sender].all_transactions) all_tns_ids.push_back(tns.transaction_id);
+        for(auto tns:peers[sender].all_transactions) all_tns_ids.push_back(tns->transaction_id);
 
         vector<int> chain = peers[sender].tree->findLongestPath();
         for(auto i : chain){
@@ -173,7 +171,7 @@ public:
 
             TreeNode *t = peers[sender].tree->findbyvalue(i);
             for(auto j:t->block->tns){
-                used_tns_ids.push_back(j.transaction_id);
+                used_tns_ids.push_back(j->transaction_id);
             }
         }
 
@@ -183,7 +181,7 @@ public:
         set_difference(all_tns_ids.begin(), all_tns_ids.end(),used_tns_ids.begin(), used_tns_ids.end(),back_inserter(difference));
         
         if(difference.size()==0){
-            Block b(block_count,sender,vector<Transaction>(),chain[chain.size()-1]);
+            Block *b = new Block(block_count,sender,chain[chain.size()-1]);
             block_count++;
 
             exponential_distribution<double> distribution2(peers[sender].hash_power/I);
@@ -197,14 +195,14 @@ public:
 
             shuffle(difference.begin(),difference.end(),gen);
             vector<int> selected_tns_ids(difference.begin(),difference.begin()+no_of_tns);
-            vector<Transaction> selected_tns;
+            vector<Transaction*> selected_tns;
 
             for(auto id:selected_tns_ids){
                 for(auto t: peers[sender].all_transactions){
-                    if(id==t.transaction_id) selected_tns.push_back(t);
+                    if(id==t->transaction_id) selected_tns.push_back(t);
                 }
             }
-            Block b(block_count,sender,selected_tns,chain[chain.size()-1]);
+            Block *b = new Block(block_count,sender,selected_tns,chain[chain.size()-1]);
             block_count++;
 
             exponential_distribution<double> distribution2(peers[sender].hash_power/I);
@@ -215,9 +213,9 @@ public:
     }
     bool receive_forward_transaction(int person,TypeEvent E){
         bool seen=false;
-        Transaction received_tn=E.transaction;
+        Transaction *received_tn=E.transaction;
         for(auto t:peers[person].all_transactions){
-            if(t.transaction_id==received_tn.transaction_id){
+            if(t->transaction_id==received_tn->transaction_id){
                 seen =true;
                 break;
             }
@@ -230,23 +228,23 @@ public:
     }
     bool receive_forward_block(int person,TypeEvent E){
         bool seen=false;
-        int id=E.block.block_id;
-        if(peers[person].tree->findbyvalue(id)!=nullptr) seen=true;
+        int id=E.block->block_id;
+        if(peers[person].tree->findbyvalue(id)!=nullptr) return true;
 
         for(auto b: peers[person].pending_blocks){
-            if(b.block_id==id){
+            if(b->block_id==id){
                 seen=true;
                 break;
             }
         }
         if(!seen){
-            if(peers[person].tree->findbyvalue(E.block.prev_block_id) == nullptr){
+            if(peers[person].tree->findbyvalue(E.block->prev_block_id) == nullptr){
                 peers[person].pending_blocks.push_back(E.block);
             }
             else{
                 vector<int> chain1=peers[person].tree->findLongestPath();
                 
-                peers[person].tree->insert(E.block.prev_block_id,id,&E.block,E.time);
+                peers[person].tree->insert(E.block->prev_block_id,id,E.block,E.time);
                 queue<int> parent_ids;
                 parent_ids.push(id);
 
@@ -255,16 +253,16 @@ public:
                     parent_ids.pop();
                     
                     for(auto b:peers[person].pending_blocks){
-                        if(b.prev_block_id==parent){
-                            peers[person].tree->insert(parent,b.block_id,&b,E.time);
-                            parent_ids.push(b.block_id);
+                        if(b->prev_block_id==parent){
+                            peers[person].tree->insert(parent,b->block_id,b,E.time);
+                            parent_ids.push(b->block_id);
                         }
                     }
                 }
 
-                vector<Block> updated_pending_blocks;
+                vector<Block*> updated_pending_blocks;
                 for(auto i : peers[person].pending_blocks){
-                    if(peers[person].tree->findbyvalue(i.block_id) == nullptr){
+                    if(peers[person].tree->findbyvalue(i->block_id) == nullptr){
                         updated_pending_blocks.push_back(i);
                     }
                 }
@@ -285,22 +283,33 @@ public:
             TypeEvent present_event = event_queue.top();
             event_queue.pop();
 
-            if(present_event.time > 200) break;
+            if(valid_block_count >= 50) break;
             
             if(present_event.type_of_event==0){
-                int person = present_event.transaction.sender;
+                int person = present_event.transaction->sender;
 
                 // cout<<present_event.time<<"\t"<<present_event.transaction.transaction_id<<"\t0\t"<<person<<"\tall"<<endl;
 
                 int available_balance = peers[person].balance;
-                uniform_real_distribution<double> distribution1(0,available_balance);
-                present_event.transaction.money=distribution1(gen);
+                if(available_balance == 0){
+                    event_queue.push(generate_transaction(person,present_event.time));
+                    continue;
+                }
 
-                peers[person].balance-=present_event.transaction.money;
-                peers[present_event.transaction.receiver].balance+=present_event.transaction.money;
+                uniform_int_distribution<int> distribution1(0,2*available_balance);
+                int money = distribution1(gen);
+                if(money > available_balance){
+                    event_queue.push(generate_transaction(person,present_event.time));
+                    continue;
+                }
+                present_event.transaction->money=money;
 
-                if(present_event.transaction.money == 0){
-                    break;
+                peers[person].balance-=present_event.transaction->money;
+                peers[present_event.transaction->receiver].balance+=present_event.transaction->money;
+
+                if(present_event.transaction->money == 0){
+                    event_queue.push(generate_transaction(person,present_event.time));
+                    continue;
                 }
 
                 peers[person].all_transactions.push_back(present_event.transaction);
@@ -321,7 +330,7 @@ public:
             if(present_event.type_of_event==1){
                 int person=present_event.receiver;
                 
-                logfile<<present_event.time<<"\t"<<"Transaction\t"<<present_event.transaction.transaction_id<<"\t"<<present_event.sender<<"\t"<<person<<endl;
+                // logfile << fixed << setprecision(3) << present_event.time <<"\tTransaction\t" << present_event.transaction->transaction_id << "\t"<< present_event.sender << "\t" << person <<endl;
 
                 if(!receive_forward_transaction(person,present_event)){
                     for(auto neighbour:peers[person].neighbours){
@@ -340,13 +349,15 @@ public:
                 }
             }
             if(present_event.type_of_event==2){
-                int person=present_event.block.miner;
+                int person=present_event.block->miner;
 
                 // cout<<present_event.time<<"\t"<<"Block\t"<<present_event.block.block_id<<"\t"<<present_event.block.prev_block_id<<"\t2\t"<<person<<"\tall"<<endl;
 
                 vector<int> longest_chain = peers[person].tree->findLongestPath();
-                if(longest_chain[longest_chain.size()-1] == present_event.block.prev_block_id){
-                    int size_tns = present_event.block.tns.size();
+                if(longest_chain[longest_chain.size()-1] == present_event.block->prev_block_id){
+                    valid_block_count++;
+                    // cout << valid_block_count << endl;
+                    int size_tns = present_event.block->tns.size();
 
                     for(auto neighbour:peers[person].neighbours){
                         TypeEvent t=present_event;
@@ -359,7 +370,7 @@ public:
                         t.time += (latencies[person][neighbour][0]+size_tns*(8/latencies[person][neighbour][1])+rd_var_dij)*0.001;
                         event_queue.push(t);
                     }
-                    peers[person].tree->insert(present_event.block.prev_block_id,present_event.block.block_id,&present_event.block,present_event.time);
+                    peers[person].tree->insert(present_event.block->prev_block_id,present_event.block->block_id,present_event.block,present_event.time);
                     peers[person].balance+=50;
                     event_queue.push(generate_block(person,present_event.time));
                 }                
@@ -367,9 +378,9 @@ public:
             if(present_event.type_of_event==3){
                 int person=present_event.receiver;
 
-                logfile<<present_event.time<<"\tBlock\t"<<present_event.block.block_id<<"\t"<<present_event.sender<<"\t"<<person<<endl;
+                // logfile << fixed << setprecision(3) << present_event.time << "\tBlock\t" << present_event.block->block_id << "\t" << present_event.sender << "\t" << person << endl;
 
-                int size_tns=present_event.block.tns.size();
+                int size_tns=present_event.block->tns.size();
                 if(!receive_forward_block(present_event.receiver,present_event)){
                     for(auto neighbour:peers[person].neighbours){
                         TypeEvent t=present_event;

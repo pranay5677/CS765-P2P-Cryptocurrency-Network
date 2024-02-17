@@ -81,12 +81,6 @@ int main(int argc, char*argv[]){
 
         }
         if(isConnected(adjacency_list)){
-            for(int i=0;i<NODE;i++){
-                for(int j=0;j<NODE;j++){
-                    cout<<adjacency_list[i][j]<<" ";
-                }
-                cout<<endl;
-            }
             writeAdjacencyToFile(adjacency_list);
             break;
         }

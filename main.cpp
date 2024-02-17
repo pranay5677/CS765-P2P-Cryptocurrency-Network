@@ -6,7 +6,7 @@
 #include "event.h"
 using namespace std;
 
-extern ofstream logfile;
+ofstream logfile("logfile.txt");
 
 int main(int argc, char* argv[]){
     
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]){
 
     srand(static_cast<unsigned int>(time(0)));
 
-    Event e(n,T_tx,z0,z1,I);
+    Event e(n,T_tx,z0,z1,I,logfile);
     e.run();
 
     ofstream outputFile("edge_trees.txt", ios::app);
@@ -65,6 +65,68 @@ int main(int argc, char* argv[]){
         cout.rdbuf(original);
     }
 
+    vector<double> hash_powers(n);
+    vector<int> speeds(n);
+    vector<double> fractions(n, 0);
+
+    vector<int> chain = e.peers[0].tree->findLongestPath();
+    int count = 0;
+
+    for(auto i: chain){
+        if(i==-1) continue;
+
+        TreeNode *node = e.peers[0].tree->findbyvalue(i);
+        fractions[node->block->miner] += 1;
+        count++;
+    }
+    for(int i=0; i<n; i++){
+        speeds[i] = e.peers[i].speed;
+        hash_powers[i] = e.peers[i].hash_power;
+        fractions[i] /= count;
+    }
+
+    ofstream vec("vectors.txt");
+    if(vec.is_open()) {
+        for(double power : hash_powers) {
+            vec << power << " ";
+        }
+        vec << endl;
+
+        for(int speed : speeds) {
+            vec << speed << " ";
+        }
+        vec << endl;
+
+        for(double fraction : fractions) {
+            vec << fraction << " ";
+        }
+        vec << endl;
+    }
+    else{
+        cerr << "Unable to open file for writing!" << endl;
+        return 1;
+    }
+    sort(hash_powers.begin(),hash_powers.end());
+    double a=0,b=0,c=0,d=0;
+    for(int i=0; i<n; i++){
+        if(e.peers[i].speed && e.peers[i].hash_power==hash_powers[hash_powers.size()-1]){
+            a+=fractions[i];
+        }
+        if(!e.peers[i].speed && e.peers[i].hash_power==hash_powers[hash_powers.size()-1]){
+            b+=fractions[i];
+            
+        }if(e.peers[i].speed && e.peers[i].hash_power!=hash_powers[hash_powers.size()-1]){
+            c+=fractions[i];
+            
+        }if(!e.peers[i].speed && e.peers[i].hash_power!=hash_powers[hash_powers.size()-1]){
+            d+=fractions[i];
+            
+        }
+    }
+    // cout<<"Length of longest chain: "<<e.peers[0].tree->findLongestPath().size()<<endl;
+    // cout<<a<<" "<<b<<" "<<c<<" "<<d<<" "<<endl;
+
+    vec.close();
     logfile.close();
     outputFile.close();   
 }

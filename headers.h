@@ -15,8 +15,8 @@ public:
     double hash_power; // fast_cpu or slow_cpu
     
     vector<int> neighbours;    
-    vector<Transaction> all_transactions;
-    vector<Block> pending_blocks;
+    vector<Transaction*> all_transactions;
+    vector<Block*> pending_blocks;
 
     Tree *tree;
 
@@ -51,13 +51,18 @@ public:
     int prev_block_id;
     int miner;
 
-    vector<Transaction> tns;
+    vector<Transaction*> tns;
     
     Block(){}
-    Block(int block_id,int miner,vector<Transaction>tns,int prev_block_id){
+    Block(int block_id,int miner,vector<Transaction*>tns,int prev_block_id){
         this->block_id=block_id;
         this->miner=miner;
         this->tns=tns;
+        this->prev_block_id=prev_block_id;
+    }
+    Block(int block_id,int miner,int prev_block_id){
+        this->block_id=block_id;
+        this->miner=miner;
         this->prev_block_id=prev_block_id;
     }
 };
@@ -67,18 +72,16 @@ public:
     int value;
     double time;
     Block *block;
-    std::vector<TreeNode*> children;
+    vector<TreeNode*> children;
+
     TreeNode(){}
     TreeNode(int val, Block* blk, double t) : value(val), block(blk), time(t) {}
-
-    ~TreeNode() {
-        for (TreeNode* child : children) {
+    ~TreeNode(){
+        for(TreeNode* child : children){
             delete child;
         }
     }
-
-    // Function to add a child to the node
-    void addChild(TreeNode* child) {
+    void addChild(TreeNode* child){
         children.push_back(child);
     }
 };
@@ -87,85 +90,66 @@ class Tree{
 public:
     TreeNode* root;
 
-    Tree()  {
-        root = new TreeNode(-1,nullptr,0);
+    Tree(){
+        root = new TreeNode(-1,new Block(-1,-1,-2),0);
     }
-
-    ~Tree() {
+    ~Tree(){
         delete root;
     }
 
-
-    void insert(int parentValue, int childValue, Block* block, int time) {
-        if (root == nullptr) {
-            // If the tree is empty, create a root node
-            root = new TreeNode(parentValue, nullptr, 0); // Root node has no Block and time
-        }
-
+    void insert(int parentValue, int childValue, Block* block, int time){
         TreeNode* parentNode = findNode(root, parentValue);
 
-        if (parentNode != nullptr) {
-            // If the parent node is found, insert the child
+        if(parentNode != nullptr){
             TreeNode* childNode = new TreeNode(childValue, block, time);
             parentNode->addChild(childNode);
-        } else {
-            std::cout << "Parent node not found. Cannot insert child." << std::endl;
+        }
+        else{
+            cout << "Parent node not found. Cannot insert child." << endl;
         }
     }
-
     // Function to find the longest path from root to leaf
-    std::vector<int> findLongestPath() {
-        std::vector<int> currentPath;
+    vector<int> findLongestPath(){
+        vector<int> currentPath;
         return findLongestPathHelper(root, currentPath);
     }
-
     // Helper function to find a node with a specific value
-    TreeNode* findNode(TreeNode* current, int value) {
-        if (current == nullptr) {
-            return nullptr;
-        }
-
-        if (current->value == value) {
+    TreeNode* findNode(TreeNode* current, int value){
+        if(current->value == value){
             return current;
         }
 
-        for (TreeNode* child : current->children) {
+        for(TreeNode* child : current->children) {
             TreeNode* result = findNode(child, value);
-            if (result != nullptr) {
+            if(result != nullptr){
                 return result;
             }
         }
 
         return nullptr; // Node not found
     }
-
     // Helper function to find the longest path recursively
-    std::vector<int> findLongestPathHelper(const TreeNode* node, const std::vector<int>& currentPath) {
-        if (node == nullptr) {
-            return currentPath;
-        }
-
-        std::vector<int> newPath = currentPath;
+    vector<int> findLongestPathHelper(const TreeNode* node, vector<int>& currentPath) {
+        
+        vector<int> newPath = currentPath;
         newPath.push_back(node->value);
 
-        if (node->children.empty()) {
-            // If it's a leaf node, return the current path
-            return newPath;
+        if(node->children.empty()){            
+            return newPath; // If it's a leaf node, return the current path
         }
 
-        std::vector<int> longestPath;
+        vector<int> longestPath;
 
-        for (const TreeNode* child : node->children) {
-            std::vector<int> childPath = findLongestPathHelper(child, newPath);
-            if (childPath.size() > longestPath.size()) {
-                // Choose the path with greater length or, in case of equal length, the path with less time
-                longestPath = childPath;
+        for(const TreeNode* child : node->children){
+            vector<int> childPath = findLongestPathHelper(child, newPath);
+
+            if(childPath.size() > longestPath.size()){
+                longestPath = childPath; // Choose the path with greater length or, in case of equal length, the path with less time
             }
         }
-
         return longestPath;
     }
-    TreeNode* findbyvalue(int value) {
+    TreeNode* findbyvalue(int value){
         return findNode(root, value);
     }
     void printTree() const {
@@ -190,7 +174,6 @@ public:
     void printAllEdges() const {
         printAllEdgesHelper(root);
     }
-
     void printAllEdgesHelper(const TreeNode* node) const {
         if (node != nullptr) {
             for (const TreeNode* child : node->children) {

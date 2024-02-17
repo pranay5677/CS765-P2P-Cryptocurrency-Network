@@ -1,3 +1,0 @@
-1) Currently all transactions are integers
-2) No validation of block
-3) Didnt include coinbase transaction
